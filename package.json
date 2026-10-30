@@ -1,0 +1,38 @@
+{
+  "name": "apple-hig-mcp",
+  "version": "1.0.0",
+  "description": "Model Context Protocol (MCP) server for live Apple Human Interface Guidelines (HIG)",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "apple-hig-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "apple",
+    "hig",
+    "human-interface-guidelines",
+    "design",
+    "swiftui",
+    "liquid-glass",
+    "macos",
+    "ios",
+    "visionos"
+  ],
+  "author": "Antigravity",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "typescript": "^5.7.3"
+  }
+}
