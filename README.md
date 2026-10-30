@@ -21,26 +21,49 @@ Model Context Protocol (MCP) server providing LLMs direct access to Apple's Huma
 | `get_redesign_checklist` | Generate actionable HIG redesign & polish checklist (iOS, macOS, visionOS). |
 | `get_design_resources` | Official links for Apple Figma kits, SF Symbols, and design templates. |
 
-## Quick Start
+## Installation & Setup
 
-### Build
-```bash
-npm install
-npm run build
-```
-
-### MCP Configuration
-Add to `claude_desktop_config.json` or Antigravity MCP settings:
+### Method 1: Zero-Install via npx (Recommended)
+Add directly to your MCP client configuration (`claude_desktop_config.json`, Antigravity `mcp_config.json`, or Cursor):
 
 ```json
 {
   "mcpServers": {
     "apple-hig": {
-      "command": "node",
-      "args": ["/Users/abi/Documents/antigravity/intelligent-tesla/apple-hig-mcp/dist/index.js"]
+      "command": "npx",
+      "args": ["-y", "github:Amo643/apple-hig-mcp"]
     }
   }
 }
+```
+
+Or install via Claude Code CLI in one command:
+```bash
+claude mcp add apple-hig -- npx -y github:Amo643/apple-hig-mcp
+```
+
+### Method 2: Global Install
+```bash
+npm install -g github:Amo643/apple-hig-mcp
+```
+
+Then reference the binary directly:
+```json
+{
+  "mcpServers": {
+    "apple-hig": {
+      "command": "apple-hig-mcp"
+    }
+  }
+}
+```
+
+### Method 3: From Source
+```bash
+git clone https://github.com/Amo643/apple-hig-mcp.git
+cd apple-hig-mcp
+npm install
+npm run build
 ```
 
 ## Testing
