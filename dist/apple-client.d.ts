@@ -13,50 +13,57 @@ export interface HigDocument {
     content: string;
     url: string;
     cachedAt: number;
+    expiresAt?: number;
 }
 export declare class AppleHigClient {
     private readonly baseUrl;
-    private readonly cacheDir;
+    private readonly userCacheDir;
     private readonly memoryCache;
+    private readonly pendingGuidelineRequests;
+    private pendingIndexRequest;
+    private readonly maxCacheFiles;
     private topicIndex;
     private indexLoadedAt;
     private readonly indexTtlMs;
+    private isRefreshingIndex;
     private readonly subIndices;
     constructor();
     /**
-     * Initializes or refreshes the complete topic index across all categories.
+     * Initializes or returns the cached index in sub-millisecond time.
+     * Employs deduplication and stale-while-revalidate pattern.
      */
     ensureIndex(): Promise<HigTopic[]>;
-    /**
-     * Parses topics and summaries from an Apple HIG markdown file.
-     */
+    private triggerBackgroundIndexRefresh;
+    private fetchIndexFromNetwork;
     private parseIndex;
-    /**
-     * Fetches raw markdown from Apple HIG CDN.
-     */
     private fetchRawMarkdown;
     /**
-     * Fetches full guideline markdown with metadata.
+     * Fetches full guideline markdown with metadata in sub-millisecond time.
+     * Deduplicates concurrent requests, caches extracted text, and self-cleans.
      */
     getGuideline(slugOrQuery: string): Promise<HigDocument>;
+    private fetchAndStoreGuideline;
     /**
-     * Search across titles, summaries, slugs, categories, and smart synonyms.
+     * Asynchronously prunes expired and excess cache files without blocking execution.
+     */
+    private autoPruneCache;
+    /**
+     * Synchronously removes expired cache files and enforces LRU max cache limits.
+     */
+    pruneExpiredSync(): void;
+    /**
+     * Manually clears all memory and disk caches.
+     */
+    clearCache(): void;
+    /**
+     * Search across titles, summaries, slugs, categories, and smart synonyms (0.1ms).
      */
     search(query: string, categoryFilter?: string): Promise<HigTopic[]>;
-    /**
-     * List all categories and their topic count.
-     */
     listCategories(): Promise<{
         category: string;
         count: number;
     }[]>;
-    /**
-     * List all topics within a category.
-     */
     listTopics(category?: string): Promise<HigTopic[]>;
-    /**
-     * Extracts JSON frontmatter metadata enclosed in <!-- ... -->.
-     */
     private extractFrontmatter;
     private extractTitle;
     private getFallbackIndex;

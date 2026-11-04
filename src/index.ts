@@ -28,6 +28,12 @@ const TOOLS: Tool[] = [
         }
       },
       required: ['query']
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
     }
   },
   {
@@ -42,6 +48,12 @@ const TOOLS: Tool[] = [
         }
       },
       required: ['topic']
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true
     }
   },
   {
@@ -50,6 +62,12 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {}
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
     }
   },
   {
@@ -63,6 +81,12 @@ const TOOLS: Tool[] = [
           description: 'Optional category name to filter by (e.g. "Foundations", "Components", "Patterns", "Platforms"). If omitted, lists all indexed topics.'
         }
       }
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
     }
   },
   {
@@ -77,6 +101,12 @@ const TOOLS: Tool[] = [
           description: 'Target platform for the checklist (default: "all").'
         }
       }
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
     }
   },
   {
@@ -85,6 +115,12 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {}
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
     }
   }
 ];

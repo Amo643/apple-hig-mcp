@@ -21,6 +21,12 @@ const TOOLS = [
                 }
             },
             required: ['query']
+        },
+        annotations: {
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false
         }
     },
     {
@@ -35,6 +41,12 @@ const TOOLS = [
                 }
             },
             required: ['topic']
+        },
+        annotations: {
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: true
         }
     },
     {
@@ -43,6 +55,12 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {}
+        },
+        annotations: {
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false
         }
     },
     {
@@ -56,6 +74,12 @@ const TOOLS = [
                     description: 'Optional category name to filter by (e.g. "Foundations", "Components", "Patterns", "Platforms"). If omitted, lists all indexed topics.'
                 }
             }
+        },
+        annotations: {
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false
         }
     },
     {
@@ -70,6 +94,12 @@ const TOOLS = [
                     description: 'Target platform for the checklist (default: "all").'
                 }
             }
+        },
+        annotations: {
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false
         }
     },
     {
@@ -78,6 +108,12 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {}
+        },
+        annotations: {
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false
         }
     }
 ];

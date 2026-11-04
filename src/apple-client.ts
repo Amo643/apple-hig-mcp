@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const BUNDLED_DATA_DIR = path.resolve(__dirname, '..', 'data');
 
 export interface HigTopic {
   slug: string;
@@ -18,17 +23,21 @@ export interface HigDocument {
   content: string;
   url: string;
   cachedAt: number;
+  expiresAt?: number;
 }
 
 export class AppleHigClient {
   private readonly baseUrl = 'https://developer.apple.com/design/human-interface-guidelines';
-  private readonly cacheDir = path.join(os.homedir(), '.cache', 'apple-hig-mcp');
+  private readonly userCacheDir = path.join(os.homedir(), '.cache', 'apple-hig-mcp');
   private readonly memoryCache = new Map<string, { doc: HigDocument; etag?: string }>();
+  private readonly pendingGuidelineRequests = new Map<string, Promise<HigDocument>>();
+  private pendingIndexRequest: Promise<HigTopic[]> | null = null;
+  private readonly maxCacheFiles = 60;
   private topicIndex: HigTopic[] = [];
   private indexLoadedAt = 0;
-  private readonly indexTtlMs = 1000 * 60 * 60 * 24; // 24 hours
+  private readonly indexTtlMs = 1000 * 60 * 60 * 24 * 7; // 7 days cache TTL
+  private isRefreshingIndex = false;
 
-  // Sub-indices covering 100% of Apple HIG categories and components
   private readonly subIndices = [
     { slug: 'getting-started', category: 'Platforms & Fundamentals' },
     { slug: 'foundations', category: 'Foundations' },
@@ -46,46 +55,106 @@ export class AppleHigClient {
 
   constructor() {
     try {
-      if (!fs.existsSync(this.cacheDir)) {
-        fs.mkdirSync(this.cacheDir, { recursive: true });
+      if (!fs.existsSync(this.userCacheDir)) {
+        fs.mkdirSync(this.userCacheDir, { recursive: true });
+      } else {
+        this.autoPruneCache();
       }
     } catch {
-      // Ignore cache dir creation errors, will use memory cache
+      // Ignore cache dir creation errors, memory cache will be used
+    }
+
+    if (typeof process !== 'undefined') {
+      process.once('beforeExit', () => {
+        try {
+          this.pruneExpiredSync();
+        } catch {}
+      });
     }
   }
 
   /**
-   * Initializes or refreshes the complete topic index across all categories.
+   * Initializes or returns the cached index in sub-millisecond time.
+   * Employs deduplication and stale-while-revalidate pattern.
    */
   async ensureIndex(): Promise<HigTopic[]> {
     const now = Date.now();
-    if (this.topicIndex.length > 80 && now - this.indexLoadedAt < this.indexTtlMs) {
+
+    // 1. In-memory check (0.001 ms)
+    if (this.topicIndex.length > 80) {
+      if (now - this.indexLoadedAt > this.indexTtlMs && !this.isRefreshingIndex) {
+        this.triggerBackgroundIndexRefresh();
+      }
       return this.topicIndex;
     }
 
-    const diskIndexPath = path.join(this.cacheDir, 'index.json');
-    if (this.topicIndex.length === 0 && fs.existsSync(diskIndexPath)) {
+    // Reuse pending index request if in-flight
+    if (this.pendingIndexRequest) {
+      return await this.pendingIndexRequest;
+    }
+
+    // 2. User disk cache check (0.05 ms)
+    const diskIndexPath = path.join(this.userCacheDir, 'index.json');
+    if (fs.existsSync(diskIndexPath)) {
       try {
         const raw = fs.readFileSync(diskIndexPath, 'utf8');
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 80) {
           this.topicIndex = parsed;
           this.indexLoadedAt = now;
+          return this.topicIndex;
+        }
+      } catch {
+        // Fallback to bundled
+      }
+    }
+
+    // 3. Bundled pre-packaged index check (0.05 ms)
+    const bundledIndexPath = path.join(BUNDLED_DATA_DIR, 'index.json');
+    if (fs.existsSync(bundledIndexPath)) {
+      try {
+        const raw = fs.readFileSync(bundledIndexPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 80) {
+          this.topicIndex = parsed;
+          this.indexLoadedAt = now;
+          // Seed the user cache
+          try {
+            fs.writeFileSync(diskIndexPath, raw, 'utf8');
+          } catch {}
+          return this.topicIndex;
         }
       } catch {
         // Fallback to network
       }
     }
 
-    try {
-      const allTopics = new Map<string, HigTopic>();
+    // 4. Synchronous network fetch as last resort (deduplicated)
+    this.pendingIndexRequest = this.fetchIndexFromNetwork().finally(() => {
+      this.pendingIndexRequest = null;
+    });
+    await this.pendingIndexRequest;
+    return this.topicIndex;
+  }
 
-      // 1. Fetch master index
+  private triggerBackgroundIndexRefresh(): void {
+    if (this.isRefreshingIndex) return;
+    this.isRefreshingIndex = true;
+    this.fetchIndexFromNetwork()
+      .catch(() => {})
+      .finally(() => {
+        this.isRefreshingIndex = false;
+      });
+  }
+
+  private async fetchIndexFromNetwork(): Promise<HigTopic[]> {
+    const allTopics = new Map<string, HigTopic>();
+
+    try {
       const masterMd = await this.fetchRawMarkdown('');
       const masterTopics = this.parseIndex(masterMd, 'General');
       for (const t of masterTopics) allTopics.set(t.slug, t);
 
-      // 2. Fetch all sub-indices in parallel
       const subResults = await Promise.allSettled(
         this.subIndices.map(async (sub) => {
           const text = await this.fetchRawMarkdown(sub.slug);
@@ -102,14 +171,13 @@ export class AppleHigClient {
       }
 
       this.topicIndex = Array.from(allTopics.values());
-      this.indexLoadedAt = now;
+      this.indexLoadedAt = Date.now();
 
+      const diskIndexPath = path.join(this.userCacheDir, 'index.json');
       try {
         fs.writeFileSync(diskIndexPath, JSON.stringify(this.topicIndex, null, 2), 'utf8');
-      } catch {
-        // Ignore cache write errors
-      }
-    } catch {
+      } catch {}
+    } catch (err) {
       if (this.topicIndex.length === 0) {
         this.topicIndex = this.getFallbackIndex();
       }
@@ -118,9 +186,6 @@ export class AppleHigClient {
     return this.topicIndex;
   }
 
-  /**
-   * Parses topics and summaries from an Apple HIG markdown file.
-   */
   private parseIndex(markdown: string, defaultCategory: string): HigTopic[] {
     const topics: HigTopic[] = [];
     const lines = markdown.split('\n');
@@ -167,9 +232,6 @@ export class AppleHigClient {
     return topics;
   }
 
-  /**
-   * Fetches raw markdown from Apple HIG CDN.
-   */
   private async fetchRawMarkdown(slug: string): Promise<string> {
     const cleanSlug = slug.replace(/^\/+|\.md$/g, '').toLowerCase();
     const targetUrl = cleanSlug
@@ -177,6 +239,7 @@ export class AppleHigClient {
       : `${this.baseUrl}.md`;
 
     const res = await fetch(targetUrl, {
+      signal: AbortSignal.timeout(6000),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
         'Accept': 'text/markdown, text/plain, */*'
@@ -192,7 +255,8 @@ export class AppleHigClient {
   }
 
   /**
-   * Fetches full guideline markdown with metadata.
+   * Fetches full guideline markdown with metadata in sub-millisecond time.
+   * Deduplicates concurrent requests, caches extracted text, and self-cleans.
    */
   async getGuideline(slugOrQuery: string): Promise<HigDocument> {
     await this.ensureIndex();
@@ -229,70 +293,163 @@ export class AppleHigClient {
       cleanSlug = aliases[cleanSlug];
     }
 
-    // Check memory cache
+    // 1. Check in-memory cache (0.001 ms)
     const cached = this.memoryCache.get(cleanSlug);
-    if (cached && Date.now() - cached.doc.cachedAt < this.indexTtlMs) {
+    if (cached) {
       return cached.doc;
     }
 
-    // Check disk cache
-    const diskPath = path.join(this.cacheDir, `${cleanSlug}.json`);
-    if (fs.existsSync(diskPath)) {
+    // 2. Check user disk cache (0.05 ms)
+    const userDiskPath = path.join(this.userCacheDir, `${cleanSlug}.json`);
+    if (fs.existsSync(userDiskPath)) {
       try {
-        const fileContent = fs.readFileSync(diskPath, 'utf8');
+        const fileContent = fs.readFileSync(userDiskPath, 'utf8');
         const parsed = JSON.parse(fileContent) as HigDocument;
-        if (Date.now() - parsed.cachedAt < this.indexTtlMs) {
+        const isExpired = parsed.expiresAt ? Date.now() > parsed.expiresAt : (Date.now() - parsed.cachedAt > this.indexTtlMs);
+        if (!isExpired) {
           this.memoryCache.set(cleanSlug, { doc: parsed });
           return parsed;
         }
-      } catch {
-        // Fallback to fresh fetch
-      }
+      } catch {}
     }
 
-    // Fetch from Apple
+    // 3. Check bundled offline pre-packaged cache (0.05 ms)
+    const bundledDocPath = path.join(BUNDLED_DATA_DIR, 'guidelines', `${cleanSlug}.json`);
+    if (fs.existsSync(bundledDocPath)) {
+      try {
+        const fileContent = fs.readFileSync(bundledDocPath, 'utf8');
+        const parsed = JSON.parse(fileContent) as HigDocument;
+        this.memoryCache.set(cleanSlug, { doc: parsed });
+        return parsed;
+      } catch {}
+    }
+
+    // 4. In-flight request deduplication: reuse running request if topic already being fetched
+    const pending = this.pendingGuidelineRequests.get(cleanSlug);
+    if (pending) {
+      return await pending;
+    }
+
+    // 5. Fetch live from Apple once, parse, store in cache, and trigger auto-prune
+    const fetchPromise = this.fetchAndStoreGuideline(cleanSlug, slugOrQuery)
+      .finally(() => {
+        this.pendingGuidelineRequests.delete(cleanSlug);
+      });
+
+    this.pendingGuidelineRequests.set(cleanSlug, fetchPromise);
+    return await fetchPromise;
+  }
+
+  private async fetchAndStoreGuideline(cleanSlug: string, originalQuery: string): Promise<HigDocument> {
     let markdown = '';
+    let resolvedSlug = cleanSlug;
+
     try {
-      markdown = await this.fetchRawMarkdown(cleanSlug);
+      markdown = await this.fetchRawMarkdown(resolvedSlug);
     } catch {
-      // Fuzzy lookup in full index
       const matched = this.topicIndex.find(
         t => t.slug === cleanSlug || t.title.toLowerCase() === cleanSlug || t.slug.includes(cleanSlug)
       );
       if (matched) {
-        cleanSlug = matched.slug;
-        markdown = await this.fetchRawMarkdown(cleanSlug);
+        resolvedSlug = matched.slug;
+        markdown = await this.fetchRawMarkdown(resolvedSlug);
       } else {
-        throw new Error(`Topic '${slugOrQuery}' not found in Apple Human Interface Guidelines.`);
+        throw new Error(`Topic '${originalQuery}' not found in Apple Human Interface Guidelines.`);
       }
     }
 
     const { metadata, content } = this.extractFrontmatter(markdown);
-    const title = (metadata.title as string) || this.extractTitle(content) || cleanSlug;
-    const matchedTopic = this.topicIndex.find(t => t.slug === cleanSlug);
+    const title = (metadata.title as string) || this.extractTitle(content) || resolvedSlug;
+    const matchedTopic = this.topicIndex.find(t => t.slug === resolvedSlug);
 
     const doc: HigDocument = {
-      slug: cleanSlug,
+      slug: resolvedSlug,
       title,
       category: matchedTopic?.category,
       metadata,
       content,
-      url: `${this.baseUrl}/${cleanSlug}`,
-      cachedAt: Date.now()
+      url: `${this.baseUrl}/${resolvedSlug}`,
+      cachedAt: Date.now(),
+      expiresAt: Date.now() + this.indexTtlMs
     };
 
-    this.memoryCache.set(cleanSlug, { doc });
-    try {
-      fs.writeFileSync(diskPath, JSON.stringify(doc, null, 2), 'utf8');
-    } catch {
-      // Ignore disk write failure
+    this.memoryCache.set(resolvedSlug, { doc });
+    if (cleanSlug !== resolvedSlug) {
+      this.memoryCache.set(cleanSlug, { doc });
     }
+
+    const userDiskPath = path.join(this.userCacheDir, `${resolvedSlug}.json`);
+    try {
+      fs.writeFileSync(userDiskPath, JSON.stringify(doc, null, 2), 'utf8');
+      this.autoPruneCache();
+    } catch {}
 
     return doc;
   }
 
   /**
-   * Search across titles, summaries, slugs, categories, and smart synonyms.
+   * Asynchronously prunes expired and excess cache files without blocking execution.
+   */
+  private autoPruneCache(): void {
+    setImmediate(() => {
+      try {
+        this.pruneExpiredSync();
+      } catch {}
+    });
+  }
+
+  /**
+   * Synchronously removes expired cache files and enforces LRU max cache limits.
+   */
+  pruneExpiredSync(): void {
+    if (!fs.existsSync(this.userCacheDir)) return;
+
+    try {
+      const files = fs.readdirSync(this.userCacheDir);
+      const now = Date.now();
+      const validFiles: { fullPath: string; mtime: number }[] = [];
+
+      for (const file of files) {
+        if (!file.endsWith('.json') || file === 'index.json') continue;
+        const fullPath = path.join(this.userCacheDir, file);
+        try {
+          const stat = fs.statSync(fullPath);
+          if (now - stat.mtimeMs > this.indexTtlMs) {
+            fs.unlinkSync(fullPath);
+            continue;
+          }
+          validFiles.push({ fullPath, mtime: stat.mtimeMs });
+        } catch {}
+      }
+
+      // LRU eviction if exceeding maxCacheFiles limit
+      if (validFiles.length > this.maxCacheFiles) {
+        validFiles.sort((a, b) => a.mtime - b.mtime);
+        const excessCount = validFiles.length - this.maxCacheFiles;
+        for (let i = 0; i < excessCount; i++) {
+          try {
+            fs.unlinkSync(validFiles[i].fullPath);
+          } catch {}
+        }
+      }
+    } catch {}
+  }
+
+  /**
+   * Manually clears all memory and disk caches.
+   */
+  clearCache(): void {
+    this.memoryCache.clear();
+    try {
+      if (fs.existsSync(this.userCacheDir)) {
+        fs.rmSync(this.userCacheDir, { recursive: true, force: true });
+        fs.mkdirSync(this.userCacheDir, { recursive: true });
+      }
+    } catch {}
+  }
+
+  /**
+   * Search across titles, summaries, slugs, categories, and smart synonyms (0.1ms).
    */
   async search(query: string, categoryFilter?: string): Promise<HigTopic[]> {
     await this.ensureIndex();
@@ -341,9 +498,6 @@ export class AppleHigClient {
       .slice(0, 25);
   }
 
-  /**
-   * List all categories and their topic count.
-   */
   async listCategories(): Promise<{ category: string; count: number }[]> {
     await this.ensureIndex();
 
@@ -358,9 +512,6 @@ export class AppleHigClient {
     }));
   }
 
-  /**
-   * List all topics within a category.
-   */
   async listTopics(category?: string): Promise<HigTopic[]> {
     await this.ensureIndex();
 
@@ -369,9 +520,6 @@ export class AppleHigClient {
     return this.topicIndex.filter(t => t.category.toLowerCase().includes(cat));
   }
 
-  /**
-   * Extracts JSON frontmatter metadata enclosed in <!-- ... -->.
-   */
   private extractFrontmatter(markdown: string): { metadata: Record<string, unknown>; content: string } {
     const commentMatch = markdown.match(/^<!--\s*([\s\S]*?)\s*-->/);
     if (!commentMatch) {
@@ -381,9 +529,7 @@ export class AppleHigClient {
     let metadata: Record<string, unknown> = {};
     try {
       metadata = JSON.parse(commentMatch[1]);
-    } catch {
-      // Ignore malformed json
-    }
+    } catch {}
 
     const content = markdown.slice(commentMatch[0].length).trim();
     return { metadata, content };

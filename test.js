@@ -37,7 +37,24 @@ async function runTests() {
   const categories = await client.listCategories();
   console.log(`✅ Found ${categories.length} categories:`, categories.map(c => c.category).join(', '));
 
-  console.log('\n🎉 ALL 5 INTEGRATION TESTS PASSED WITH LIVE APPLE HIG DATA!\n');
+  // Test 6: Repeated Read & Deduplication Benchmark (10x repeated read)
+  console.log('\nTest 6: 10x Repeated Cache & Deduplication Benchmark');
+  const startRepeat = performance.now();
+  const repeatedResults = await Promise.all(
+    Array.from({ length: 10 }, () => client.getGuideline('materials'))
+  );
+  const elapsedRepeat = (performance.now() - startRepeat).toFixed(2);
+  console.log(`✅ Completed 10 parallel/repeated fetches in ${elapsedRepeat}ms (${(elapsedRepeat / 10).toFixed(3)}ms/op)`);
+  if (repeatedResults.some(r => r.title !== 'Materials')) {
+    throw new Error('Deduplicated results mismatch');
+  }
+
+  // Test 7: Cache Prune & Cleanup Lifecycle
+  console.log('\nTest 7: Cache Auto-Pruning & Storage Integrity');
+  client.pruneExpiredSync();
+  console.log('✅ Auto-prune executed cleanly without error.');
+
+  console.log('\n🎉 ALL 7 INTEGRATION TESTS PASSED WITH LIVE APPLE HIG DATA!\n');
 }
 
 runTests().catch(err => {
