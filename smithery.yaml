@@ -7,4 +7,4 @@ startCommand:
     properties: {}
   commandFunction:
     |-
-    (config) => ({command: 'npx', args: ['-y', '@amo643/apple-hig-mcp'], env: {}})
+    (config) => ({command: 'npx', args: ['-y', '@dark0nly/apple-hig-mcp'], env: {}})
