@@ -1,5 +1,10 @@
 # Apple HIG MCP Server
 
+[![npm version](https://img.shields.io/npm/v/@amo643/apple-hig-mcp.svg)](https://www.npmjs.com/package/@amo643/apple-hig-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/@amo643/apple-hig-mcp.svg)](https://www.npmjs.com/package/@amo643/apple-hig-mcp)
+[![Smithery](https://smithery.ai/badge/@amo643/apple-hig-mcp)](https://smithery.ai/server/@amo643/apple-hig-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Model Context Protocol (MCP) server providing LLMs direct access to Apple's Human Interface Guidelines (HIG) via live `developer.apple.com` Markdown endpoints.
 
 ## Features
@@ -31,7 +36,7 @@ Add directly to your MCP client configuration (`claude_desktop_config.json`, Ant
   "mcpServers": {
     "apple-hig": {
       "command": "npx",
-      "args": ["-y", "github:Amo643/apple-hig-mcp"]
+      "args": ["-y", "@amo643/apple-hig-mcp"]
     }
   }
 }
@@ -39,12 +44,17 @@ Add directly to your MCP client configuration (`claude_desktop_config.json`, Ant
 
 Or install via Claude Code CLI in one command:
 ```bash
-claude mcp add apple-hig -- npx -y github:Amo643/apple-hig-mcp
+claude mcp add apple-hig -- npx -y @amo643/apple-hig-mcp
+```
+
+Or install via Smithery CLI:
+```bash
+npx -y @smithery/cli install @amo643/apple-hig-mcp --client claude
 ```
 
 ### Method 2: Global Install
 ```bash
-npm install -g github:Amo643/apple-hig-mcp
+npm install -g @amo643/apple-hig-mcp
 ```
 
 Then reference the binary directly:

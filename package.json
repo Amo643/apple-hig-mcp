@@ -1,17 +1,33 @@
 {
-  "name": "apple-hig-mcp",
+  "name": "@amo643/apple-hig-mcp",
   "version": "1.0.0",
-  "description": "Model Context Protocol (MCP) server for live Apple Human Interface Guidelines (HIG)",
+  "description": "High-performance Model Context Protocol (MCP) server for live Apple Human Interface Guidelines (HIG)",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
     "apple-hig-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "data"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Amo643/apple-hig-mcp.git"
+  },
+  "homepage": "https://github.com/Amo643/apple-hig-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/Amo643/apple-hig-mcp/issues"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc --watch",
-    "test": "node test.js && node test-mcp-stdio.js"
+    "test": "node test.js && node test-mcp-stdio.js",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "mcp",
@@ -24,9 +40,12 @@
     "liquid-glass",
     "macos",
     "ios",
-    "visionos"
+    "visionos",
+    "ai",
+    "claude",
+    "cursor"
   ],
-  "author": "Antigravity",
+  "author": "Amo643",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.1"
